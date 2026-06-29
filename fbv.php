@@ -119,6 +119,9 @@ final class FBV_Plugin {
 	private function __construct() {
 		add_action( 'init', array( 'FBV_Post_Type', 'register' ) );
 
+		// One-time import of the bundled starter verses (runs once, for admins).
+		add_action( 'init', array( 'FBV_Importer', 'maybe_run_initial_import' ), 20 );
+
 		$rest_api = new FBV_REST_API();
 		add_action( 'rest_api_init', array( $rest_api, 'register_routes' ) );
 

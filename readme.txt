@@ -38,8 +38,9 @@ jw.org.
 1. Upload the `fbv` folder to `/wp-content/plugins/`.
 2. Activate the plugin through the *Plugins* menu in WordPress.
 3. Create a page and add the `[fbv]` shortcode.
-4. (Optional) Import the starter set:
-   `wp fbv import --fetch-en`
+4. The bundled starter verses (data/initial-import.csv) are imported
+   automatically the first time an administrator loads the site. The same
+   set can be re-imported any time via WP-CLI: `wp fbv import`.
 
 == Usage ==
 

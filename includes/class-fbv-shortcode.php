@@ -124,9 +124,6 @@ class FBV_Shortcode {
 				'versesMany'   => '%d wersetów',
 				'saveError'    => 'Nie udało się zapisać wersetu.',
 				'required'     => 'Adres wersetu oraz przynajmniej jeden tekst są wymagane.',
-				'importing'    => 'Importowanie…',
-				'importNoData' => 'Wybierz plik lub wklej zawartość CSV.',
-				'importDone'   => 'Zaimportowano: %i, pominięto: %s, błędy: %f',
 			),
 			'en' => array(
 				'search'       => 'Search verses…',

@@ -487,111 +487,6 @@
 			.catch( function () { /* non-fatal */ } );
 	}
 
-	/* Admin: CSV import ------------------------------------------------ */
-
-	var importUI = DATA.isAdmin ? {
-		btn: root.querySelector( '#fbv-import-btn' ),
-		overlay: root.querySelector( '#fbv-import-modal' ),
-		file: root.querySelector( '#fbv-import-file' ),
-		text: root.querySelector( '#fbv-import-text' ),
-		skip: root.querySelector( '#fbv-import-skip' ),
-		status: root.querySelector( '#fbv-import-status' ),
-		run: root.querySelector( '#fbv-import-run' ),
-		cancel: root.querySelector( '#fbv-import-cancel' )
-	} : null;
-
-	function openImport() {
-		if ( ! importUI ) {
-			return;
-		}
-		importUI.text.value = '';
-		importUI.file.value = '';
-		importUI.status.textContent = '';
-		importUI.status.className = 'fbv-import-status';
-		importUI.overlay.hidden = false;
-	}
-
-	function closeImport() {
-		if ( importUI ) {
-			importUI.overlay.hidden = true;
-		}
-	}
-
-	function runImport() {
-		var csv = importUI.text.value.trim();
-		if ( ! csv ) {
-			importUI.status.className = 'fbv-import-status is-error';
-			importUI.status.textContent = UI.importNoData || 'Wybierz plik lub wklej CSV.';
-			return;
-		}
-
-		importUI.run.disabled = true;
-		importUI.status.className = 'fbv-import-status';
-		importUI.status.textContent = UI.importing || 'Importowanie…';
-
-		apiRequest( 'POST', '/import', { csv: csv, skip_existing: !! importUI.skip.checked } )
-			.then( function ( res ) {
-				return reloadAll().then( function () {
-					return res;
-				} );
-			} )
-			.then( function ( res ) {
-				importUI.run.disabled = false;
-				importUI.status.className = 'fbv-import-status is-ok';
-				var summary = ( UI.importDone || 'Zaimportowano: %i, pominięto: %s, błędy: %f' )
-					.replace( '%i', res.imported )
-					.replace( '%s', res.skipped )
-					.replace( '%f', res.failed );
-				importUI.status.textContent = summary;
-				if ( res.errors && res.errors.length ) {
-					importUI.status.textContent += '\n' + res.errors.slice( 0, 10 ).join( '\n' );
-				}
-			} )
-			.catch( function ( err ) {
-				importUI.run.disabled = false;
-				importUI.status.className = 'fbv-import-status is-error';
-				importUI.status.textContent = ( err && err.message ) ? err.message : ( UI.saveError || 'Błąd importu.' );
-			} );
-	}
-
-	function reloadAll() {
-		return Promise.all( [
-			apiRequest( 'GET', '/verses', null ),
-			apiRequest( 'GET', '/tags', null )
-		] ).then( function ( results ) {
-			if ( Array.isArray( results[0] ) ) {
-				state.verses = results[0];
-				sortVerses();
-			}
-			if ( Array.isArray( results[1] ) ) {
-				state.tags = results[1];
-			}
-			render();
-		} );
-	}
-
-	if ( importUI ) {
-		importUI.btn.addEventListener( 'click', openImport );
-		importUI.cancel.addEventListener( 'click', closeImport );
-		importUI.run.addEventListener( 'click', runImport );
-		importUI.overlay.addEventListener( 'click', function ( e ) {
-			if ( e.target === importUI.overlay ) {
-				closeImport();
-			}
-		} );
-		importUI.file.addEventListener( 'change', function () {
-			var f = importUI.file.files && importUI.file.files[0];
-			if ( ! f ) {
-				return;
-			}
-			var reader = new FileReader();
-			reader.onload = function () {
-				importUI.text.value = reader.result;
-			};
-			reader.readAsText( f, 'UTF-8' );
-		} );
-	}
-
 	/* API -------------------------------------------------------------- */
 
 	function apiRequest( method, path, body ) {
@@ -629,14 +524,8 @@
 			}
 		} );
 		document.addEventListener( 'keydown', function ( e ) {
-			if ( e.key !== 'Escape' ) {
-				return;
-			}
-			if ( modal && ! modal.overlay.hidden ) {
+			if ( e.key === 'Escape' && ! modal.overlay.hidden ) {
 				closeModal();
-			}
-			if ( importUI && ! importUI.overlay.hidden ) {
-				closeImport();
 			}
 		} );
 		refreshModalLabels();

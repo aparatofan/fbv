@@ -99,29 +99,29 @@ class FBV_Importer {
 	}
 
 	/**
-	 * Import from raw CSV text (used by the admin import dialog).
+	 * Run the bundled starter import exactly once.
 	 *
-	 * @param string $csv  CSV content.
-	 * @param array  $opts Options (skip_existing, logger).
-	 * @return array|WP_Error
+	 * Hooked on `init`; imports data/initial-import.csv the first time an
+	 * administrator loads the site after this version, then never again.
+	 * Existing verses are updated in place (filling missing Polish text /
+	 * tags) without creating duplicates or wiping manual edits.
 	 */
-	public static function run_import_string( $csv, array $opts = array() ) {
-		$csv = (string) $csv;
-		if ( '' === trim( $csv ) ) {
-			return new WP_Error( 'fbv_empty_csv', __( 'The CSV is empty.', 'fbv' ) );
+	public static function maybe_run_initial_import() {
+		if ( get_option( 'fbv_initial_import_done' ) ) {
+			return;
+		}
+		// Only an administrator should trigger the one-time import.
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
 		}
 
-		// A real stream handles quoted fields with embedded newlines correctly.
-		$handle = fopen( 'php://temp', 'r+' );
-		if ( ! $handle ) {
-			return new WP_Error( 'fbv_stream', __( 'Could not open a temporary stream.', 'fbv' ) );
-		}
-		fwrite( $handle, $csv );
-		rewind( $handle );
+		// Mark as done up front so a failure can't retrigger on every load.
+		update_option( 'fbv_initial_import_done', 1 );
 
-		$result = self::import_stream( $handle, $opts );
-		fclose( $handle );
-		return $result;
+		$file = FBV_PLUGIN_DIR . 'data/initial-import.csv';
+		if ( file_exists( $file ) ) {
+			self::run_import( $file, array( 'update_existing' => true ) );
+		}
 	}
 
 	/**
@@ -136,8 +136,9 @@ class FBV_Importer {
 	 * }
 	 */
 	private static function import_stream( $handle, array $opts ) {
-		$skip_existing = ! empty( $opts['skip_existing'] );
-		$logger        = isset( $opts['logger'] ) && is_callable( $opts['logger'] ) ? $opts['logger'] : function () {};
+		$skip_existing   = ! empty( $opts['skip_existing'] );
+		$update_existing = ! empty( $opts['update_existing'] );
+		$logger          = isset( $opts['logger'] ) && is_callable( $opts['logger'] ) ? $opts['logger'] : function () {};
 
 		$imported = 0;
 		$skipped  = 0;
@@ -185,35 +186,58 @@ class FBV_Importer {
 				continue;
 			}
 
-			if ( $skip_existing && self::reference_exists( $parsed['reference'] ) ) {
+			$existing_id = self::existing_id( $parsed['reference'] );
+
+			if ( $existing_id && $skip_existing ) {
 				$skipped++;
 				call_user_func( $logger, 'log', sprintf( 'Row %d (%s): already exists, skipped.', $row_num, $parsed['reference'] ) );
 				continue;
 			}
 
-			$post_id = wp_insert_post(
-				array(
-					'post_type'   => FBV_Post_Type::POST_TYPE,
-					'post_status' => 'publish',
-					'post_title'  => $parsed['reference'],
-				),
-				true
-			);
+			if ( $existing_id && $update_existing ) {
+				$post_id = $existing_id;
+			} else {
+				$post_id = wp_insert_post(
+					array(
+						'post_type'   => FBV_Post_Type::POST_TYPE,
+						'post_status' => 'publish',
+						'post_title'  => $parsed['reference'],
+					),
+					true
+				);
 
-			if ( is_wp_error( $post_id ) ) {
-				$failed++;
-				call_user_func( $logger, 'error', sprintf( 'Row %d (%s): %s', $row_num, $reference, $post_id->get_error_message() ) );
-				continue;
+				if ( is_wp_error( $post_id ) ) {
+					$failed++;
+					call_user_func( $logger, 'error', sprintf( 'Row %d (%s): %s', $row_num, $reference, $post_id->get_error_message() ) );
+					continue;
+				}
 			}
+
+			$is_new = ! ( $existing_id && $update_existing );
 
 			update_post_meta( $post_id, '_fbv_reference', $parsed['reference'] );
 			update_post_meta( $post_id, '_fbv_book_number', (int) $parsed['book_number'] );
 			update_post_meta( $post_id, '_fbv_chapter', (int) $parsed['chapter'] );
 			update_post_meta( $post_id, '_fbv_verse_start', (int) $parsed['verse_start'] );
 			update_post_meta( $post_id, '_fbv_verse_end', (int) $parsed['verse_end'] );
-			update_post_meta( $post_id, '_fbv_text_pl', wp_kses_post( $text_pl ) );
-			update_post_meta( $post_id, '_fbv_text_en', wp_kses_post( $text_en ) );
-			update_post_meta( $post_id, '_fbv_date_added', current_time( 'mysql' ) );
+
+			// Only overwrite text/tags when the CSV actually supplies them, so
+			// re-importing never wipes manually-added content.
+			if ( '' !== $text_pl ) {
+				update_post_meta( $post_id, '_fbv_text_pl', wp_kses_post( $text_pl ) );
+			} elseif ( $is_new ) {
+				update_post_meta( $post_id, '_fbv_text_pl', '' );
+			}
+
+			if ( '' !== $text_en ) {
+				update_post_meta( $post_id, '_fbv_text_en', wp_kses_post( $text_en ) );
+			} elseif ( $is_new ) {
+				update_post_meta( $post_id, '_fbv_text_en', '' );
+			}
+
+			if ( $is_new ) {
+				update_post_meta( $post_id, '_fbv_date_added', current_time( 'mysql' ) );
+			}
 
 			$tags = self::parse_tags( $tags_raw );
 			if ( ! empty( $tags ) ) {
@@ -221,7 +245,7 @@ class FBV_Importer {
 			}
 
 			$imported++;
-			call_user_func( $logger, 'success', sprintf( 'Row %d: imported %s', $row_num, $parsed['reference'] ) );
+			call_user_func( $logger, 'success', sprintf( 'Row %d: %s %s', $row_num, $is_new ? 'imported' : 'updated', $parsed['reference'] ) );
 		}
 
 		return array(
@@ -240,7 +264,7 @@ class FBV_Importer {
 	private static function detect_columns( array $row ) {
 		$aliases = array(
 			'reference' => array( 'reference', 'ref', 'adres', 'werset' ),
-			'text_pl'   => array( 'text_pl', 'pl', 'polish', 'polski', 'tekst_pl', 'tresc' ),
+			'text_pl'   => array( 'text_pl', 'pl', 'polish', 'polski', 'tekst_pl', 'tresc', 'tresc_pl' ),
 			'text_en'   => array( 'text_en', 'en', 'english', 'angielski', 'tekst_en' ),
 			'tags'      => array( 'tags', 'tagi', 'tag' ),
 		);
@@ -249,11 +273,15 @@ class FBV_Importer {
 		$found = false;
 
 		foreach ( $row as $index => $value ) {
-			$key = strtolower( trim( (string) $value ) );
+			// Match diacritic-insensitively so "TREŚĆ" matches the alias "tresc".
+			$key = FBV_Bible_Books::normalize( (string) $value );
 			foreach ( $aliases as $field => $names ) {
-				if ( in_array( $key, $names, true ) ) {
-					$map[ $field ] = $index;
-					$found         = true;
+				foreach ( $names as $name ) {
+					if ( FBV_Bible_Books::normalize( $name ) === $key ) {
+						$map[ $field ] = $index;
+						$found         = true;
+						break;
+					}
 				}
 			}
 		}
@@ -279,12 +307,12 @@ class FBV_Importer {
 	}
 
 	/**
-	 * Whether a verse with the given canonical reference already exists.
+	 * Find an existing verse post ID by canonical reference.
 	 *
 	 * @param string $reference Canonical reference.
-	 * @return bool
+	 * @return int 0 if none.
 	 */
-	private static function reference_exists( $reference ) {
+	private static function existing_id( $reference ) {
 		$existing = get_posts(
 			array(
 				'post_type'      => FBV_Post_Type::POST_TYPE,
@@ -295,7 +323,7 @@ class FBV_Importer {
 				'meta_value'     => $reference,
 			)
 		);
-		return ! empty( $existing );
+		return ! empty( $existing ) ? (int) $existing[0] : 0;
 	}
 
 	/**
