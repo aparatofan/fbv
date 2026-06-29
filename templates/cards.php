@@ -26,10 +26,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 		<div class="fbv-toolbar-right">
 			<span class="fbv-count" id="fbv-count" aria-live="polite"></span>
-			<div class="fbv-lang-toggle" role="group" aria-label="<?php esc_attr_e( 'Język', 'fbv' ); ?>">
-				<button type="button" class="fbv-lang-btn is-active" data-lang="pl">PL</button>
-				<button type="button" class="fbv-lang-btn" data-lang="en">EN</button>
-			</div>
 		</div>
 	</div>
 
@@ -55,13 +51,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 					<label class="fbv-field">
 						<span class="fbv-label" data-i18n="reference"></span>
-						<span class="fbv-input-row">
-							<input type="text" id="fbv-reference" autocomplete="off" required />
-							<span class="fbv-spinner" id="fbv-spinner" hidden></span>
-						</span>
+						<input type="text" id="fbv-reference" autocomplete="off" required />
 					</label>
-
-					<p class="fbv-fetch-status" id="fbv-fetch-status" aria-live="polite"></p>
 
 					<label class="fbv-field">
 						<span class="fbv-label" data-i18n="textPl"></span>
@@ -78,11 +69,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 						<input type="text" id="fbv-tags-input" autocomplete="off" list="fbv-tags-list" />
 						<datalist id="fbv-tags-list"></datalist>
 					</label>
-
-					<div class="fbv-jw-links">
-						<a href="#" id="fbv-link-pl" target="_blank" rel="noopener noreferrer" data-i18n="openPl"></a>
-						<a href="#" id="fbv-link-en" target="_blank" rel="noopener noreferrer" data-i18n="openEn"></a>
-					</div>
 
 					<p class="fbv-form-error" id="fbv-form-error" role="alert"></p>
 

@@ -85,7 +85,6 @@ if ( '' !== $fbv_requirements_error ) {
 require_once FBV_PLUGIN_DIR . 'includes/class-fbv-bible-books.php';
 require_once FBV_PLUGIN_DIR . 'includes/class-fbv-post-type.php';
 require_once FBV_PLUGIN_DIR . 'includes/class-fbv-parser.php';
-require_once FBV_PLUGIN_DIR . 'includes/class-fbv-fetcher.php';
 require_once FBV_PLUGIN_DIR . 'includes/class-fbv-rest-api.php';
 require_once FBV_PLUGIN_DIR . 'includes/class-fbv-shortcode.php';
 require_once FBV_PLUGIN_DIR . 'includes/class-fbv-importer.php';

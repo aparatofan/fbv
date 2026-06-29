@@ -27,16 +27,13 @@ class FBV_Importer {
 	 * [<file>]
 	 * : Path to the CSV file. Defaults to the bundled data/initial-import.csv.
 	 *
-	 * [--fetch-en]
-	 * : Attempt to auto-fetch the English NWT text from jw.org for each verse.
-	 *
 	 * [--skip-existing]
 	 * : Skip verses whose reference already exists.
 	 *
 	 * ## EXAMPLES
 	 *
 	 *     wp fbv import
-	 *     wp fbv import data/initial-import.csv --fetch-en
+	 *     wp fbv import data/initial-import.csv --skip-existing
 	 *
 	 * @param array $args       Positional args.
 	 * @param array $assoc_args Flags.
@@ -47,7 +44,6 @@ class FBV_Importer {
 		$result = self::run_import(
 			$file,
 			array(
-				'fetch_en'      => isset( $assoc_args['fetch-en'] ),
 				'skip_existing' => isset( $assoc_args['skip-existing'] ),
 				'logger'        => function ( $level, $message ) {
 					if ( ! class_exists( 'WP_CLI' ) ) {
@@ -83,14 +79,12 @@ class FBV_Importer {
 	 *
 	 * @param string $file Path to CSV.
 	 * @param array  $opts {
-	 *     @type bool     $fetch_en      Auto-fetch English text.
 	 *     @type bool     $skip_existing Skip duplicates.
 	 *     @type callable $logger        function( $level, $message ).
 	 * }
 	 * @return array|WP_Error Counts on success.
 	 */
 	public static function run_import( $file, array $opts = array() ) {
-		$fetch_en      = ! empty( $opts['fetch_en'] );
 		$skip_existing = ! empty( $opts['skip_existing'] );
 		$logger        = isset( $opts['logger'] ) && is_callable( $opts['logger'] ) ? $opts['logger'] : function () {};
 
@@ -108,7 +102,6 @@ class FBV_Importer {
 		$skipped  = 0;
 		$failed   = 0;
 		$row_num  = 0;
-		$fetcher  = $fetch_en ? new FBV_Fetcher() : null;
 
 		while ( false !== ( $row = fgetcsv( $handle, 0, ',' ) ) ) {
 			$row_num++;
@@ -146,10 +139,6 @@ class FBV_Importer {
 			}
 
 			$text_en = '';
-			if ( $fetcher ) {
-				$fetched = $fetcher->fetch( $parsed );
-				$text_en = $fetched['text_en'];
-			}
 
 			$post_id = wp_insert_post(
 				array(
@@ -184,7 +173,7 @@ class FBV_Importer {
 			call_user_func(
 				$logger,
 				'success',
-				sprintf( 'Row %d: imported %s%s', $row_num, $parsed['reference'], ( '' !== $text_en ? ' (EN fetched)' : '' ) )
+				sprintf( 'Row %d: imported %s', $row_num, $parsed['reference'] )
 			);
 		}
 

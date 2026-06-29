@@ -27,10 +27,9 @@ jw.org.
 * Responsive card layout (1/2/3 columns)
 * Live client-side search across references, text and tags
 * Single-tag filtering with a scrollable pill row
-* Global PL/EN language toggle
+* Per-card flag language switch (Polish/English)
 * Canonical Bible-order sorting
-* Frontend add/edit/delete for administrators
-* Semi-automatic verse fetch from jw.org (with manual copy-paste fallback)
+* Frontend add/edit/delete for administrators (manual PL/EN text entry)
 * REST API with nonce authentication
 * WP-CLI importer for bulk loading from CSV
 
@@ -54,9 +53,8 @@ Administrators will see an "Add Verse" button and per-card edit/delete controls.
 
 = Where does the verse text come from? =
 
-Polish text is entered/imported manually; English text is fetched server-side
-from jw.org's New World Translation pages (with a wol.jw.org fallback) and can
-always be edited by hand.
+Both Polish and English text are entered manually by the administrator in the
+add/edit form (copy-paste from your preferred source).
 
 = How do I remove all data on uninstall? =
 

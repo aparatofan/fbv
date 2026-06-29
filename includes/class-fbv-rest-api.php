@@ -16,9 +16,6 @@ class FBV_REST_API {
 
 	const REST_NAMESPACE = 'fbv/v1';
 
-	const RATE_LIMIT       = 10;
-	const RATE_LIMIT_WINDOW = MINUTE_IN_SECONDS;
-
 	/**
 	 * Register all routes.
 	 */
@@ -73,19 +70,6 @@ class FBV_REST_API {
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => array( $this, 'get_tags' ),
 				'permission_callback' => '__return_true',
-			)
-		);
-
-		register_rest_route(
-			self::REST_NAMESPACE,
-			'/fetch-verse',
-			array(
-				'methods'             => WP_REST_Server::CREATABLE,
-				'callback'            => array( $this, 'fetch_verse' ),
-				'permission_callback' => array( $this, 'require_admin' ),
-				'args'                => array(
-					'reference' => array( 'type' => 'string', 'required' => true ),
-				),
 			)
 		);
 	}
@@ -322,72 +306,6 @@ class FBV_REST_API {
 		}
 
 		return rest_ensure_response( $out );
-	}
-
-	/* ---------------------------------------------------------------------
-	 * Fetch
-	 * ------------------------------------------------------------------- */
-
-	/**
-	 * POST /fetch-verse — pull verse text from jw.org.
-	 *
-	 * @param WP_REST_Request $request Request.
-	 * @return WP_REST_Response|WP_Error
-	 */
-	public function fetch_verse( WP_REST_Request $request ) {
-		$limited = $this->check_rate_limit();
-		if ( is_wp_error( $limited ) ) {
-			return $limited;
-		}
-
-		$parsed = FBV_Parser::parse( $request->get_param( 'reference' ) );
-		if ( is_wp_error( $parsed ) ) {
-			return new WP_REST_Response(
-				array(
-					'success' => false,
-					'errors'  => array( $parsed->get_error_message() ),
-				),
-				200
-			);
-		}
-
-		$fetcher = new FBV_Fetcher();
-		$result  = $fetcher->fetch( $parsed );
-
-		return rest_ensure_response(
-			array(
-				'success'     => ( '' !== $result['text_pl'] || '' !== $result['text_en'] ),
-				'book_number' => $parsed['book_number'],
-				'chapter'     => $parsed['chapter'],
-				'verse_start' => $parsed['verse_start'],
-				'verse_end'   => $parsed['verse_end'],
-				'reference'   => $parsed['reference'],
-				'text_pl'     => $result['text_pl'],
-				'text_en'     => $result['text_en'],
-				'url_pl'      => $result['url_pl'],
-				'url_en'      => $result['url_en'],
-				'errors'      => $result['errors'],
-			)
-		);
-	}
-
-	/**
-	 * Per-user rate limiter for the fetch endpoint.
-	 *
-	 * @return true|WP_Error
-	 */
-	private function check_rate_limit() {
-		$key   = 'fbv_rate_' . get_current_user_id();
-		$count = (int) get_transient( $key );
-		if ( $count >= self::RATE_LIMIT ) {
-			return new WP_Error(
-				'fbv_rate_limited',
-				__( 'Too many fetch requests. Please wait a minute and try again.', 'fbv' ),
-				array( 'status' => 429 )
-			);
-		}
-		set_transient( $key, $count + 1, self::RATE_LIMIT_WINDOW );
-		return true;
 	}
 
 	/* ---------------------------------------------------------------------
