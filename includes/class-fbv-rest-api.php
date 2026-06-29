@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class FBV_REST_API {
 
-	const NAMESPACE = 'fbv/v1';
+	const REST_NAMESPACE = 'fbv/v1';
 
 	const RATE_LIMIT       = 10;
 	const RATE_LIMIT_WINDOW = MINUTE_IN_SECONDS;
@@ -24,7 +24,7 @@ class FBV_REST_API {
 	 */
 	public function register_routes() {
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/verses',
 			array(
 				array(
@@ -45,7 +45,7 @@ class FBV_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/verses/(?P<id>\d+)',
 			array(
 				array(
@@ -67,7 +67,7 @@ class FBV_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/tags',
 			array(
 				'methods'             => WP_REST_Server::READABLE,
@@ -77,7 +77,7 @@ class FBV_REST_API {
 		);
 
 		register_rest_route(
-			self::NAMESPACE,
+			self::REST_NAMESPACE,
 			'/fetch-verse',
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,

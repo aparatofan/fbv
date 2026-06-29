@@ -62,7 +62,7 @@ class FBV_Shortcode {
 			array(
 				'verses'  => $this->get_verses(),
 				'tags'    => $this->get_tags(),
-				'restUrl' => esc_url_raw( rest_url( FBV_REST_API::NAMESPACE ) ),
+				'restUrl' => esc_url_raw( rest_url( FBV_REST_API::REST_NAMESPACE ) ),
 				'nonce'   => wp_create_nonce( 'wp_rest' ),
 				'isAdmin' => current_user_can( 'manage_options' ),
 				'lang'    => 'pl',
@@ -77,7 +77,7 @@ class FBV_Shortcode {
 	 * @return array
 	 */
 	private function get_verses() {
-		$request  = new WP_REST_Request( 'GET', '/' . FBV_REST_API::NAMESPACE . '/verses' );
+		$request  = new WP_REST_Request( 'GET', '/' . FBV_REST_API::REST_NAMESPACE . '/verses' );
 		$response = rest_do_request( $request );
 		return $response->is_error() ? array() : $response->get_data();
 	}
@@ -88,7 +88,7 @@ class FBV_Shortcode {
 	 * @return array
 	 */
 	private function get_tags() {
-		$request  = new WP_REST_Request( 'GET', '/' . FBV_REST_API::NAMESPACE . '/tags' );
+		$request  = new WP_REST_Request( 'GET', '/' . FBV_REST_API::REST_NAMESPACE . '/tags' );
 		$response = rest_do_request( $request );
 		return $response->is_error() ? array() : $response->get_data();
 	}
