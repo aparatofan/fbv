@@ -66,11 +66,47 @@
 	white-space: nowrap;
 }
 
-/* Tag filter row ------------------------------------------------------- */
+/* Tag filter (collapsible) --------------------------------------------- */
+.fbv-tags-section {
+	margin-bottom: 1.25rem;
+}
+
+.fbv-tags-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: .4rem;
+	border: 1px solid var(--fbv-border);
+	background: var(--fbv-card-bg);
+	border-radius: 999px;
+	padding: .4rem .9rem;
+	font-size: .85rem;
+	font-weight: 600;
+	color: #374151;
+	cursor: pointer;
+}
+
+.fbv-tags-toggle:hover {
+	background: var(--fbv-pill-bg);
+}
+
+.fbv-tags-toggle-arrow {
+	transition: transform .15s ease;
+	font-size: .7rem;
+}
+
+.fbv-tags-toggle.is-open .fbv-tags-toggle-arrow {
+	transform: rotate(180deg);
+}
+
+.fbv-tags[hidden] {
+	display: none;
+}
+
 .fbv-tags {
 	display: flex;
-	flex-wrap: nowrap;
+	flex-wrap: wrap;
 	gap: .5rem;
+	margin-top: .75rem;
 	overflow-x: auto;
 	padding-bottom: .5rem;
 	margin-bottom: 1.25rem;
@@ -223,15 +259,20 @@
 	padding: 2rem 0;
 }
 
-/* Add button ----------------------------------------------------------- */
-.fbv-add-btn {
+/* Admin buttons -------------------------------------------------------- */
+.fbv-admin-buttons {
 	position: fixed;
 	bottom: 1.5rem;
 	right: 1.5rem;
 	z-index: 1000;
+	display: flex;
+	gap: .6rem;
+	align-items: center;
+}
+
+.fbv-add-btn,
+.fbv-import-btn {
 	border: 0;
-	background: var(--fbv-accent);
-	color: #fff;
 	font-weight: 600;
 	padding: .8rem 1.2rem;
 	border-radius: 999px;
@@ -239,8 +280,20 @@
 	cursor: pointer;
 }
 
-.fbv-add-btn:hover {
-	filter: brightness(1.05);
+.fbv-add-btn {
+	background: var(--fbv-accent);
+	color: #fff;
+}
+
+.fbv-import-btn {
+	background: var(--fbv-card-bg);
+	color: #374151;
+	border: 1px solid var(--fbv-border);
+}
+
+.fbv-add-btn:hover,
+.fbv-import-btn:hover {
+	filter: brightness(1.03);
 }
 
 /* Modal ---------------------------------------------------------------- */
@@ -338,4 +391,46 @@
 .fbv-btn[disabled] {
 	opacity: .6;
 	cursor: not-allowed;
+}
+
+/* Import dialog -------------------------------------------------------- */
+.fbv-import-help {
+	font-size: .82rem;
+	color: var(--fbv-muted);
+	margin: 0 0 1rem;
+}
+
+.fbv-import-modal-textarea,
+#fbv-import-text {
+	width: 100%;
+	padding: .6rem .75rem;
+	border: 1px solid var(--fbv-border);
+	border-radius: 8px;
+	font-family: monospace;
+	font-size: .85rem;
+	resize: vertical;
+}
+
+.fbv-checkbox {
+	display: flex;
+	align-items: center;
+	gap: .5rem;
+	font-size: .9rem;
+	margin-bottom: 1rem;
+	cursor: pointer;
+}
+
+.fbv-import-status {
+	font-size: .85rem;
+	white-space: pre-line;
+	margin: 0 0 1rem;
+	min-height: 1em;
+}
+
+.fbv-import-status.is-ok {
+	color: #15803d;
+}
+
+.fbv-import-status.is-error {
+	color: #b91c1c;
 }

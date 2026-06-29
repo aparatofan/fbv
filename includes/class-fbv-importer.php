@@ -1,11 +1,14 @@
 <?php
 /**
- * CSV importer (WP-CLI command).
+ * CSV importer.
  *
- * Usage:
- *   wp fbv import [<file>] [--fetch-en] [--skip-existing]
+ * Works both as a WP-CLI command (`wp fbv import`) and from the frontend admin
+ * import dialog (via the REST API, which passes the raw CSV text).
  *
- * Defaults to data/initial-import.csv when no file is given.
+ * Accepted columns (detected from the header row, in any order):
+ *   reference, text_pl, text_en, tags
+ * If there is no recognised header, columns are read positionally as
+ * reference, text_pl, tags.
  *
  * @package FBV
  */
@@ -15,12 +18,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Imports verses from a CSV (reference, text_pl, tags).
+ * Imports verses from a CSV.
  */
 class FBV_Importer {
 
 	/**
-	 * Import verses from a CSV file.
+	 * Import verses from a CSV file (WP-CLI).
 	 *
 	 * ## OPTIONS
 	 *
@@ -51,8 +54,6 @@ class FBV_Importer {
 					}
 					if ( 'error' === $level ) {
 						WP_CLI::warning( $message );
-					} elseif ( 'success' === $level ) {
-						WP_CLI::log( $message );
 					} else {
 						WP_CLI::log( $message );
 					}
@@ -75,19 +76,13 @@ class FBV_Importer {
 	}
 
 	/**
-	 * Core import routine, reusable outside WP-CLI.
+	 * Import from a CSV file path.
 	 *
 	 * @param string $file Path to CSV.
-	 * @param array  $opts {
-	 *     @type bool     $skip_existing Skip duplicates.
-	 *     @type callable $logger        function( $level, $message ).
-	 * }
-	 * @return array|WP_Error Counts on success.
+	 * @param array  $opts Options (skip_existing, logger).
+	 * @return array|WP_Error
 	 */
 	public static function run_import( $file, array $opts = array() ) {
-		$skip_existing = ! empty( $opts['skip_existing'] );
-		$logger        = isset( $opts['logger'] ) && is_callable( $opts['logger'] ) ? $opts['logger'] : function () {};
-
 		if ( ! file_exists( $file ) || ! is_readable( $file ) ) {
 			/* translators: %s: file path. */
 			return new WP_Error( 'fbv_file_missing', sprintf( __( 'CSV file not found or unreadable: %s', 'fbv' ), $file ) );
@@ -98,26 +93,84 @@ class FBV_Importer {
 			return new WP_Error( 'fbv_file_open', __( 'Could not open CSV file.', 'fbv' ) );
 		}
 
+		$result = self::import_stream( $handle, $opts );
+		fclose( $handle );
+		return $result;
+	}
+
+	/**
+	 * Import from raw CSV text (used by the admin import dialog).
+	 *
+	 * @param string $csv  CSV content.
+	 * @param array  $opts Options (skip_existing, logger).
+	 * @return array|WP_Error
+	 */
+	public static function run_import_string( $csv, array $opts = array() ) {
+		$csv = (string) $csv;
+		if ( '' === trim( $csv ) ) {
+			return new WP_Error( 'fbv_empty_csv', __( 'The CSV is empty.', 'fbv' ) );
+		}
+
+		// A real stream handles quoted fields with embedded newlines correctly.
+		$handle = fopen( 'php://temp', 'r+' );
+		if ( ! $handle ) {
+			return new WP_Error( 'fbv_stream', __( 'Could not open a temporary stream.', 'fbv' ) );
+		}
+		fwrite( $handle, $csv );
+		rewind( $handle );
+
+		$result = self::import_stream( $handle, $opts );
+		fclose( $handle );
+		return $result;
+	}
+
+	/**
+	 * Core import loop over an open CSV stream.
+	 *
+	 * @param resource $handle Open readable stream positioned at the start.
+	 * @param array    $opts   Options (skip_existing, logger).
+	 * @return array {
+	 *     @type int $imported
+	 *     @type int $skipped
+	 *     @type int $failed
+	 * }
+	 */
+	private static function import_stream( $handle, array $opts ) {
+		$skip_existing = ! empty( $opts['skip_existing'] );
+		$logger        = isset( $opts['logger'] ) && is_callable( $opts['logger'] ) ? $opts['logger'] : function () {};
+
 		$imported = 0;
 		$skipped  = 0;
 		$failed   = 0;
 		$row_num  = 0;
+		$map      = null; // Column index map once a header is detected.
 
 		while ( false !== ( $row = fgetcsv( $handle, 0, ',' ) ) ) {
 			$row_num++;
 
-			// Skip the header row.
-			if ( 1 === $row_num && isset( $row[0] ) && 'reference' === strtolower( trim( $row[0] ) ) ) {
+			// Skip fully blank lines.
+			if ( null === $row || ( 1 === count( $row ) && null === $row[0] ) ) {
 				continue;
 			}
-			// Skip blank lines.
-			if ( empty( array_filter( $row, 'strlen' ) ) ) {
+			if ( empty( array_filter( $row, static function ( $v ) { return '' !== trim( (string) $v ); } ) ) ) {
 				continue;
 			}
 
-			$reference = isset( $row[0] ) ? trim( $row[0] ) : '';
-			$text_pl   = isset( $row[1] ) ? trim( $row[1] ) : '';
-			$tags_raw  = isset( $row[2] ) ? trim( $row[2] ) : '';
+			// First non-empty row: detect a header, otherwise assume positional.
+			if ( null === $map ) {
+				$map = self::detect_columns( $row );
+				if ( false !== $map ) {
+					// This row was a header; move on to data rows.
+					continue;
+				}
+				// No header: default positional layout.
+				$map = array( 'reference' => 0, 'text_pl' => 1, 'text_en' => null, 'tags' => 2 );
+			}
+
+			$reference = self::cell( $row, $map, 'reference' );
+			$text_pl   = self::cell( $row, $map, 'text_pl' );
+			$text_en   = self::cell( $row, $map, 'text_en' );
+			$tags_raw  = self::cell( $row, $map, 'tags' );
 
 			if ( '' === $reference ) {
 				$failed++;
@@ -137,8 +190,6 @@ class FBV_Importer {
 				call_user_func( $logger, 'log', sprintf( 'Row %d (%s): already exists, skipped.', $row_num, $parsed['reference'] ) );
 				continue;
 			}
-
-			$text_en = '';
 
 			$post_id = wp_insert_post(
 				array(
@@ -170,20 +221,61 @@ class FBV_Importer {
 			}
 
 			$imported++;
-			call_user_func(
-				$logger,
-				'success',
-				sprintf( 'Row %d: imported %s', $row_num, $parsed['reference'] )
-			);
+			call_user_func( $logger, 'success', sprintf( 'Row %d: imported %s', $row_num, $parsed['reference'] ) );
 		}
-
-		fclose( $handle );
 
 		return array(
 			'imported' => $imported,
 			'skipped'  => $skipped,
 			'failed'   => $failed,
 		);
+	}
+
+	/**
+	 * Detect column positions from a header row.
+	 *
+	 * @param array $row First CSV row.
+	 * @return array|false Map of field => index, or false if not a header.
+	 */
+	private static function detect_columns( array $row ) {
+		$aliases = array(
+			'reference' => array( 'reference', 'ref', 'adres', 'werset' ),
+			'text_pl'   => array( 'text_pl', 'pl', 'polish', 'polski', 'tekst_pl', 'tresc' ),
+			'text_en'   => array( 'text_en', 'en', 'english', 'angielski', 'tekst_en' ),
+			'tags'      => array( 'tags', 'tagi', 'tag' ),
+		);
+
+		$map   = array( 'reference' => null, 'text_pl' => null, 'text_en' => null, 'tags' => null );
+		$found = false;
+
+		foreach ( $row as $index => $value ) {
+			$key = strtolower( trim( (string) $value ) );
+			foreach ( $aliases as $field => $names ) {
+				if ( in_array( $key, $names, true ) ) {
+					$map[ $field ] = $index;
+					$found         = true;
+				}
+			}
+		}
+
+		// Only treat the row as a header if at least the reference column matched.
+		return ( $found && null !== $map['reference'] ) ? $map : false;
+	}
+
+	/**
+	 * Read a mapped cell value from a row.
+	 *
+	 * @param array  $row   CSV row.
+	 * @param array  $map   Column map.
+	 * @param string $field Field name.
+	 * @return string
+	 */
+	private static function cell( array $row, array $map, $field ) {
+		if ( ! isset( $map[ $field ] ) || null === $map[ $field ] ) {
+			return '';
+		}
+		$index = $map[ $field ];
+		return isset( $row[ $index ] ) ? trim( (string) $row[ $index ] ) : '';
 	}
 
 	/**

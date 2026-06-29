@@ -1,7 +1,7 @@
 /**
  * FBV — Favourite Bible Verses frontend.
- * Vanilla JS: search, tag filtering, per-card flag language switch, and the
- * admin add/edit/delete modal (manual PL/EN text entry).
+ * Vanilla JS: search, collapsible tag filtering, per-card flag language
+ * switch, the admin add/edit/delete modal and CSV import.
  */
 ( function () {
 	'use strict';
@@ -21,12 +21,16 @@
 		'<rect width="24" height="24" fill="#fff"/>' +
 		'<rect y="12" width="24" height="12" fill="#DC143C"/></svg>';
 
+	/* Chrome (search, count, buttons) is always Polish; verse text language
+	 * is chosen per card via the flag. */
+	var UI = DATA.i18n.pl || {};
+
 	var state = {
-		lang: DATA.lang === 'en' ? 'en' : 'pl',
 		activeTag: null,
 		search: '',
 		verses: Array.isArray( DATA.verses ) ? DATA.verses.slice() : [],
-		tags: Array.isArray( DATA.tags ) ? DATA.tags.slice() : []
+		tags: Array.isArray( DATA.tags ) ? DATA.tags.slice() : [],
+		cardLang: {} // verse id -> 'pl' | 'en'
 	};
 
 	var root = document.querySelector( '.fbv-app' );
@@ -37,6 +41,7 @@
 	var els = {
 		search: root.querySelector( '#fbv-search' ),
 		count: root.querySelector( '#fbv-count' ),
+		tagsToggle: root.querySelector( '#fbv-tags-toggle' ),
 		tags: root.querySelector( '#fbv-tags' ),
 		cards: root.querySelector( '#fbv-cards' ),
 		empty: root.querySelector( '#fbv-empty' )
@@ -45,8 +50,7 @@
 	/* Helpers ---------------------------------------------------------- */
 
 	function t( key ) {
-		var pack = DATA.i18n[ state.lang ] || {};
-		return pack[ key ] || key;
+		return UI[ key ] || key;
 	}
 
 	function normalize( str ) {
@@ -57,21 +61,38 @@
 		} ).replace( /[^a-z0-9]+/g, ' ' ).trim();
 	}
 
-	function verseReference( verse ) {
-		return state.lang === 'en' && verse.reference_en ? verse.reference_en : verse.reference;
+	function hasText( v ) {
+		return !! ( v && v.trim ? v.trim() : v );
 	}
 
-	function verseText( verse ) {
-		if ( state.lang === 'en' ) {
+	function hasBoth( verse ) {
+		return hasText( verse.text_pl ) && hasText( verse.text_en );
+	}
+
+	function defaultLang( verse ) {
+		// Prefer Polish; fall back to whichever language actually has text.
+		if ( hasText( verse.text_pl ) ) {
+			return 'pl';
+		}
+		return hasText( verse.text_en ) ? 'en' : 'pl';
+	}
+
+	function cardLangFor( verse ) {
+		return state.cardLang[ verse.id ] || defaultLang( verse );
+	}
+
+	function verseReference( verse, lang ) {
+		return lang === 'en' && verse.reference_en ? verse.reference_en : verse.reference;
+	}
+
+	function verseText( verse, lang ) {
+		if ( lang === 'en' ) {
 			return verse.text_en || verse.text_pl || '';
 		}
 		return verse.text_pl || verse.text_en || '';
 	}
 
 	function pluralizeCount( n ) {
-		if ( state.lang === 'en' ) {
-			return ( n === 1 ? t( 'versesOne' ) : t( 'versesMany' ) ).replace( '%d', n );
-		}
 		var tmpl;
 		var mod10 = n % 10;
 		var mod100 = n % 100;
@@ -94,13 +115,6 @@
 			node.textContent = text;
 		}
 		return node;
-	}
-
-	function toggleLang() {
-		state.lang = state.lang === 'pl' ? 'en' : 'pl';
-		root.setAttribute( 'data-lang', state.lang );
-		refreshModalLabels();
-		render();
 	}
 
 	/* Filtering -------------------------------------------------------- */
@@ -162,25 +176,28 @@
 		} );
 	}
 
-	function makeFlagButton() {
-		// Shows the flag of the language you'll switch TO.
+	function makeFlagButton( verse ) {
+		var lang = cardLangFor( verse );
+		var toLang = lang === 'pl' ? 'en' : 'pl';
 		var btn = el( 'button', 'fbv-icon-btn fbv-flag-btn' );
 		btn.type = 'button';
-		var toLang = state.lang === 'pl' ? 'en' : 'pl';
-		btn.innerHTML = state.lang === 'pl' ? FLAG_EN : FLAG_PL;
+		btn.innerHTML = lang === 'pl' ? FLAG_EN : FLAG_PL;
 		var label = toLang === 'en' ? t( 'switchToEn' ) : t( 'switchToPl' );
 		btn.title = label;
 		btn.setAttribute( 'aria-label', label );
 		btn.addEventListener( 'click', function () {
-			toggleLang();
+			state.cardLang[ verse.id ] = toLang;
+			render();
 		} );
 		return btn;
 	}
 
 	function renderCard( verse ) {
+		var lang = cardLangFor( verse );
+
 		var card = el( 'article', 'fbv-card' );
-		card.appendChild( el( 'div', 'fbv-card-ref', verseReference( verse ) ) );
-		card.appendChild( el( 'p', 'fbv-card-text', verseText( verse ) ) );
+		card.appendChild( el( 'div', 'fbv-card-ref', verseReference( verse, lang ) ) );
+		card.appendChild( el( 'p', 'fbv-card-text', verseText( verse, lang ) ) );
 
 		var tagWrap = el( 'div', 'fbv-card-tags' );
 		( verse.tags || [] ).forEach( function ( tag ) {
@@ -188,6 +205,7 @@
 			btn.type = 'button';
 			btn.addEventListener( 'click', function () {
 				state.activeTag = state.activeTag === tag.slug ? null : tag.slug;
+				openTags();
 				render();
 				window.scrollTo( { top: 0, behavior: 'smooth' } );
 			} );
@@ -195,9 +213,12 @@
 		} );
 		card.appendChild( tagWrap );
 
-		// Top-right controls: flag language switch (everyone) + admin actions.
 		var controls = el( 'div', 'fbv-card-controls' );
-		controls.appendChild( makeFlagButton() );
+
+		// Flag only when the verse actually has both languages to switch between.
+		if ( hasBoth( verse ) ) {
+			controls.appendChild( makeFlagButton( verse ) );
+		}
 
 		if ( DATA.isAdmin ) {
 			var edit = el( 'button', 'fbv-icon-btn', '✎' );
@@ -220,7 +241,9 @@
 			controls.appendChild( del );
 		}
 
-		card.appendChild( controls );
+		if ( controls.childNodes.length ) {
+			card.appendChild( controls );
+		}
 		return card;
 	}
 
@@ -250,7 +273,28 @@
 		}
 	}
 
-	/* Events ----------------------------------------------------------- */
+	/* Collapsible tags ------------------------------------------------- */
+
+	function setTagsOpen( open ) {
+		if ( ! els.tags || ! els.tagsToggle ) {
+			return;
+		}
+		els.tags.hidden = ! open;
+		els.tagsToggle.setAttribute( 'aria-expanded', open ? 'true' : 'false' );
+		els.tagsToggle.classList.toggle( 'is-open', open );
+	}
+
+	function openTags() {
+		setTagsOpen( true );
+	}
+
+	if ( els.tagsToggle ) {
+		els.tagsToggle.addEventListener( 'click', function () {
+			setTagsOpen( els.tags.hidden );
+		} );
+	}
+
+	/* Search ----------------------------------------------------------- */
 
 	if ( els.search ) {
 		els.search.addEventListener( 'input', function () {
@@ -259,7 +303,7 @@
 		} );
 	}
 
-	/* Admin: modal ----------------------------------------------------- */
+	/* Admin: add/edit modal -------------------------------------------- */
 
 	var modal = DATA.isAdmin ? buildModalRefs() : null;
 
@@ -351,7 +395,6 @@
 			return;
 		}
 
-		// Duplicate warning (only for new verses).
 		if ( ! modal.id.value ) {
 			var dupe = state.verses.some( function ( v ) {
 				return normalize( v.reference ) === normalize( reference );
@@ -420,6 +463,10 @@
 		} else {
 			state.verses.push( saved );
 		}
+		sortVerses();
+	}
+
+	function sortVerses() {
 		state.verses.sort( function ( a, b ) {
 			return ( a.book_number - b.book_number ) ||
 				( a.chapter - b.chapter ) ||
@@ -438,6 +485,111 @@
 				}
 			} )
 			.catch( function () { /* non-fatal */ } );
+	}
+
+	/* Admin: CSV import ------------------------------------------------ */
+
+	var importUI = DATA.isAdmin ? {
+		btn: root.querySelector( '#fbv-import-btn' ),
+		overlay: root.querySelector( '#fbv-import-modal' ),
+		file: root.querySelector( '#fbv-import-file' ),
+		text: root.querySelector( '#fbv-import-text' ),
+		skip: root.querySelector( '#fbv-import-skip' ),
+		status: root.querySelector( '#fbv-import-status' ),
+		run: root.querySelector( '#fbv-import-run' ),
+		cancel: root.querySelector( '#fbv-import-cancel' )
+	} : null;
+
+	function openImport() {
+		if ( ! importUI ) {
+			return;
+		}
+		importUI.text.value = '';
+		importUI.file.value = '';
+		importUI.status.textContent = '';
+		importUI.status.className = 'fbv-import-status';
+		importUI.overlay.hidden = false;
+	}
+
+	function closeImport() {
+		if ( importUI ) {
+			importUI.overlay.hidden = true;
+		}
+	}
+
+	function runImport() {
+		var csv = importUI.text.value.trim();
+		if ( ! csv ) {
+			importUI.status.className = 'fbv-import-status is-error';
+			importUI.status.textContent = UI.importNoData || 'Wybierz plik lub wklej CSV.';
+			return;
+		}
+
+		importUI.run.disabled = true;
+		importUI.status.className = 'fbv-import-status';
+		importUI.status.textContent = UI.importing || 'Importowanie…';
+
+		apiRequest( 'POST', '/import', { csv: csv, skip_existing: !! importUI.skip.checked } )
+			.then( function ( res ) {
+				return reloadAll().then( function () {
+					return res;
+				} );
+			} )
+			.then( function ( res ) {
+				importUI.run.disabled = false;
+				importUI.status.className = 'fbv-import-status is-ok';
+				var summary = ( UI.importDone || 'Zaimportowano: %i, pominięto: %s, błędy: %f' )
+					.replace( '%i', res.imported )
+					.replace( '%s', res.skipped )
+					.replace( '%f', res.failed );
+				importUI.status.textContent = summary;
+				if ( res.errors && res.errors.length ) {
+					importUI.status.textContent += '\n' + res.errors.slice( 0, 10 ).join( '\n' );
+				}
+			} )
+			.catch( function ( err ) {
+				importUI.run.disabled = false;
+				importUI.status.className = 'fbv-import-status is-error';
+				importUI.status.textContent = ( err && err.message ) ? err.message : ( UI.saveError || 'Błąd importu.' );
+			} );
+	}
+
+	function reloadAll() {
+		return Promise.all( [
+			apiRequest( 'GET', '/verses', null ),
+			apiRequest( 'GET', '/tags', null )
+		] ).then( function ( results ) {
+			if ( Array.isArray( results[0] ) ) {
+				state.verses = results[0];
+				sortVerses();
+			}
+			if ( Array.isArray( results[1] ) ) {
+				state.tags = results[1];
+			}
+			render();
+		} );
+	}
+
+	if ( importUI ) {
+		importUI.btn.addEventListener( 'click', openImport );
+		importUI.cancel.addEventListener( 'click', closeImport );
+		importUI.run.addEventListener( 'click', runImport );
+		importUI.overlay.addEventListener( 'click', function ( e ) {
+			if ( e.target === importUI.overlay ) {
+				closeImport();
+			}
+		} );
+		importUI.file.addEventListener( 'change', function () {
+			var f = importUI.file.files && importUI.file.files[0];
+			if ( ! f ) {
+				return;
+			}
+			var reader = new FileReader();
+			reader.onload = function () {
+				importUI.text.value = reader.result;
+			};
+			reader.readAsText( f, 'UTF-8' );
+		} );
 	}
 
 	/* API -------------------------------------------------------------- */
@@ -463,7 +615,7 @@
 		} );
 	}
 
-	/* Wire admin events ------------------------------------------------ */
+	/* Wire admin modal events ------------------------------------------ */
 
 	if ( modal ) {
 		if ( modal.addBtn ) {
@@ -477,8 +629,14 @@
 			}
 		} );
 		document.addEventListener( 'keydown', function ( e ) {
-			if ( e.key === 'Escape' && ! modal.overlay.hidden ) {
+			if ( e.key !== 'Escape' ) {
+				return;
+			}
+			if ( modal && ! modal.overlay.hidden ) {
 				closeModal();
+			}
+			if ( importUI && ! importUI.overlay.hidden ) {
+				closeImport();
 			}
 		} );
 		refreshModalLabels();

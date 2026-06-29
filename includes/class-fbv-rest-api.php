@@ -72,6 +72,20 @@ class FBV_REST_API {
 				'permission_callback' => '__return_true',
 			)
 		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/import',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'import_csv' ),
+				'permission_callback' => array( $this, 'require_admin' ),
+				'args'                => array(
+					'csv'           => array( 'type' => 'string', 'required' => true ),
+					'skip_existing' => array( 'type' => 'boolean', 'required' => false ),
+				),
+			)
+		);
 	}
 
 	/**
@@ -104,15 +118,15 @@ class FBV_REST_API {
 	 * @return WP_REST_Response
 	 */
 	public function get_verses( WP_REST_Request $request ) {
+		// Note: we intentionally do NOT order by the book-number meta here.
+		// Doing so forces an INNER JOIN that would hide any verse missing that
+		// meta. We fetch everything and sort canonically in PHP below.
 		$args = array(
 			'post_type'      => FBV_Post_Type::POST_TYPE,
 			'post_status'    => 'publish',
 			'posts_per_page' => -1,
-			'orderby'        => array(
-				'meta_value_num' => 'ASC',
-				'ID'             => 'ASC',
-			),
-			'meta_key'       => '_fbv_book_number',
+			'orderby'        => 'ID',
+			'order'          => 'ASC',
 		);
 
 		$tag = $request->get_param( 'tag' );
@@ -306,6 +320,49 @@ class FBV_REST_API {
 		}
 
 		return rest_ensure_response( $out );
+	}
+
+	/* ---------------------------------------------------------------------
+	 * Import
+	 * ------------------------------------------------------------------- */
+
+	/**
+	 * POST /import — bulk-import verses from pasted/uploaded CSV text.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function import_csv( WP_REST_Request $request ) {
+		$csv = (string) $request->get_param( 'csv' );
+		if ( '' === trim( $csv ) ) {
+			return new WP_Error( 'fbv_empty_csv', __( 'No CSV content received.', 'fbv' ), array( 'status' => 400 ) );
+		}
+
+		$messages = array();
+		$result   = FBV_Importer::run_import_string(
+			$csv,
+			array(
+				'skip_existing' => (bool) $request->get_param( 'skip_existing' ),
+				'logger'        => function ( $level, $message ) use ( &$messages ) {
+					if ( 'error' === $level ) {
+						$messages[] = $message;
+					}
+				},
+			)
+		);
+
+		if ( is_wp_error( $result ) ) {
+			return new WP_Error( $result->get_error_code(), $result->get_error_message(), array( 'status' => 400 ) );
+		}
+
+		return rest_ensure_response(
+			array(
+				'imported' => $result['imported'],
+				'skipped'  => $result['skipped'],
+				'failed'   => $result['failed'],
+				'errors'   => $messages,
+			)
+		);
 	}
 
 	/* ---------------------------------------------------------------------
